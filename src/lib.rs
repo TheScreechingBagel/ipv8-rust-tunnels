@@ -348,7 +348,7 @@ impl Endpoint {
 
     fn set_peer_flags(&mut self, py_peer_flags: &Bound<'_, PyAny>, py: Python<'_>) -> PyResult<()> {
         let mut peer_flags = HashSet::new();
-        for py_peer_flag in py_peer_flags.downcast::<PySet>()? {
+        for py_peer_flag in py_peer_flags.cast::<PySet>()? {
             peer_flags.insert(match py_peer_flag.extract::<u16>()? {
                 1 => PeerFlag::Relay,
                 2 => PeerFlag::ExitBt,
@@ -632,7 +632,7 @@ fn set_circuit_keys(circuit: &mut Circuit, py_circuit: &Py<PyAny>) -> PyResult<(
 
     Python::attach(|py| {
         let hops = py_circuit.getattr(py, "_hops")?;
-        let hops_list = hops.downcast_bound::<PyList>(py)?;
+        let hops_list = hops.cast_bound::<PyList>(py)?;
         for hop in hops_list {
             circuit.keys.push(keys_from_hop(&hop)?);
         }
@@ -652,10 +652,7 @@ fn set_circuit_keys(circuit: &mut Circuit, py_circuit: &Py<PyAny>) -> PyResult<(
             "RP_DOWNLOADER" => CircuitType::RPDownloader,
             _ => CircuitType::Data,
         };
-        for py_peer_flag in py_circuit
-            .getattr(py, "exit_flags")?
-            .downcast_bound::<PyList>(py)?
-        {
+        for py_peer_flag in py_circuit.getattr(py, "exit_flags")?.cast_bound::<PyList>(py)? {
             circuit.exit_flags.insert(match py_peer_flag.extract::<u16>()? {
                 1 => PeerFlag::Relay,
                 2 => PeerFlag::ExitBt,
