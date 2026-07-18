@@ -17,13 +17,16 @@ jobs:
           components: rustfmt
           target: x86_64-unknown-linux-gnu
       - name: Setup Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: 3.12
       - name: Setup dependencies
         run: |
           pip install --upgrade pip
           pip install pytest typing_extensions
+          pipx install maturin
+          maturin build
+          pip install ./target/wheels/ipv8_rust_tunnels-*
           pip install https://github.com/Tribler/py-ipv8/archive/master.zip
       - name: Check rust formatting (rustfmt)
         run: cargo fmt --all -- --check
