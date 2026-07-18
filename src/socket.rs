@@ -2,7 +2,7 @@ use arc_swap::{ArcSwap, ArcSwapAny};
 use deku::DekuReader;
 use map_macro::hash_set;
 use pyo3::types::PyBytes;
-use pyo3::{PyObject, Python};
+use pyo3::{Py, PyAny, Python};
 use rand::RngCore;
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -32,13 +32,13 @@ pub struct TunnelSettings {
     pub max_relay_early: u8,
     pub peer_flags: HashSet<PeerFlag>,
     pub exit_addr: SocketAddr,
-    pub callback: PyObject,
+    pub callback: Py<PyAny>,
     pub test_channel: tokio::sync::broadcast::Sender<(u32, usize)>,
     pub default_remotes: HashMap<u8, SocketAddr>,
 }
 
 impl TunnelSettings {
-    pub fn new(callback: PyObject) -> Self {
+    pub fn new(callback: Py<PyAny>) -> Self {
         TunnelSettings {
             prefix: vec![0; 22],
             prefixes: vec![],
@@ -362,8 +362,8 @@ impl TunnelSocket {
         }
     }
 
-    fn call_python(&self, callback: &PyObject, addr: &SocketAddr, packet: &[u8]) {
-        Python::with_gil(|py| {
+    fn call_python(&self, callback: &Py<PyAny>, addr: &SocketAddr, packet: &[u8]) {
+        Python::attach(|py| {
             let py_bytes = PyBytes::new(py, packet);
             match callback.call1(py, (addr.ip().to_string(), addr.port(), py_bytes)) {
                 Ok(_) => {}

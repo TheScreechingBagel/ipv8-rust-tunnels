@@ -4,7 +4,7 @@ use std::{
     time::Duration,
 };
 
-use pyo3::{types::IntoPyDict, PyObject, Python};
+use pyo3::{types::IntoPyDict, Py, PyAny, Python};
 use rand::{Rng, RngCore};
 use tokio::sync::broadcast;
 
@@ -21,7 +21,7 @@ pub async fn run_test(
     request_size: u16,
     response_size: u16,
     target_rtt: u16,
-    callback: PyObject,
+    callback: Py<PyAny>,
     callback_interval: u16,
 ) {
     let rtts = Arc::new(Mutex::new(Vec::<u16>::new()));
@@ -31,7 +31,7 @@ pub async fn run_test(
     if callback_interval > 0 {
         cb_task = Some(rt.task_manager.spawn(
             "speedtest_cb",
-            cb_loop(Python::with_gil(|py| callback.clone_ref(py)), callback_interval, results.clone()),
+            cb_loop(Python::attach(|py| callback.clone_ref(py)), callback_interval, results.clone()),
         ));
     }
 
@@ -65,7 +65,7 @@ pub async fn run_test(
     };
 
     tokio::time::sleep(Duration::from_millis((target_rtt * 2).into())).await;
-    let _ = Python::with_gil(|py| {
+    let _ = Python::attach(|py| {
         callback.call1(py, (results.lock().unwrap().clone().into_py_dict(py)?, true))
     });
     debug!("Finished test for circuit {}", circuit_id);
@@ -152,14 +152,14 @@ pub async fn send_loop(
 }
 
 pub async fn cb_loop(
-    callback: PyObject,
+    callback: Py<PyAny>,
     cb_interval: u16,
     results: Arc<Mutex<HashMap<u32, [usize; 4]>>>,
 ) {
     loop {
         tokio::time::sleep(Duration::from_millis(cb_interval as u64)).await;
         debug!("Calling Python callback (interval={})", cb_interval);
-        let _ = Python::with_gil(|py| {
+        let _ = Python::attach(|py| {
             callback.call1(py, (results.lock().unwrap().clone().into_py_dict(py)?, false))
         });
     }

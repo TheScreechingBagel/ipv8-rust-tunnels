@@ -66,7 +66,7 @@ impl Endpoint {
         }
     }
 
-    fn open(&mut self, callback: PyObject, worker_threads: usize) -> PyResult<bool> {
+    fn open(&mut self, callback: Py<PyAny>, worker_threads: usize) -> PyResult<bool> {
         if self.rt.is_some() {
             warn!("Endpoint is already open");
             return Ok(false);
@@ -122,7 +122,7 @@ impl Endpoint {
             let handle = manager.handle.clone();
 
             // Release GIL to allow Python to process other tasks.
-            py.allow_threads(move || {
+            py.detach(move || {
                 handle.block_on(async move {
                     manager.shutdown(timeout_secs).await;
                 });
@@ -190,7 +190,7 @@ impl Endpoint {
         Ok(())
     }
 
-    fn get_associated_circuits(&mut self, port: u16, py: Python<'_>) -> PyResult<PyObject> {
+    fn get_associated_circuits(&mut self, port: u16, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let rt = self.get_routing_table()?;
         let circuit_ids: Vec<u32> = rt
             .circuits
@@ -212,7 +212,7 @@ impl Endpoint {
         request_size: u16,
         response_size: u16,
         target_rtt: u16,
-        callback: PyObject,
+        callback: Py<PyAny>,
         callback_interval: u16,
     ) -> PyResult<()> {
         let rt = self.get_routing_table()?;
@@ -232,7 +232,7 @@ impl Endpoint {
         Ok(())
     }
 
-    fn get_peers_for_circuit(&mut self, circuit_id: u32, py: Python<'_>) -> PyResult<PyObject> {
+    fn get_peers_for_circuit(&mut self, circuit_id: u32, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let rt = self.get_routing_table()?;
         let mut result = Vec::new();
 
@@ -267,7 +267,7 @@ impl Endpoint {
         Ok(PyList::new(py, result)?.into_any().unbind())
     }
 
-    fn get_socks5_statistics(&mut self, py: Python<'_>) -> PyResult<PyObject> {
+    fn get_socks5_statistics(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let mut result = Vec::new();
         for (addr, server) in self.socks_servers.lock().unwrap().iter() {
             let item = PyDict::new(py);
@@ -279,7 +279,7 @@ impl Endpoint {
         Ok(PyList::new(py, result)?.into_any().unbind())
     }
 
-    fn get_socket_statistics(&mut self, py: Python<'_>) -> PyResult<PyObject> {
+    fn get_socket_statistics(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let rt = self.get_routing_table()?;
         Ok(PyTuple::new(py, rt.stats.lock().unwrap().socket_stats.to_vec())?
             .into_any()
@@ -290,7 +290,7 @@ impl Endpoint {
         &mut self,
         prefix: &Bound<'_, PyBytes>,
         py: Python<'_>,
-    ) -> PyResult<PyObject> {
+    ) -> PyResult<Py<PyAny>> {
         let result = PyDict::new(py);
 
         let cid: [u8; 22] = match prefix.as_bytes().try_into() {
@@ -380,7 +380,7 @@ impl Endpoint {
         Ok(())
     }
 
-    fn get_address(&mut self, py: Python<'_>) -> PyResult<PyObject> {
+    fn get_address(&mut self, py: Python<'_>) -> PyResult<Py<PyAny>> {
         let rt = self.get_routing_table()?;
         let addr = rt.socket.local_addr().unwrap();
         let ip = addr.ip().to_string().into_py_any(py)?;
@@ -388,7 +388,7 @@ impl Endpoint {
         Ok(PyTuple::new(py, vec![ip, port])?.into_any().unbind())
     }
 
-    fn get_byte_counters(&mut self) -> PyResult<PyObject> {
+    fn get_byte_counters(&mut self) -> PyResult<Py<PyAny>> {
         let mut bytes_up = 0;
         let mut bytes_down = 0;
         if let Some(rt) = &self.rt {
@@ -405,7 +405,7 @@ impl Endpoint {
                 bytes_down += exit.bytes_down;
             }
         }
-        Python::with_gil(|py| Ok(PyTuple::new(py, vec![bytes_up, bytes_down])?.into_any().unbind()))
+        Python::attach(|py| Ok(PyTuple::new(py, vec![bytes_up, bytes_down])?.into_any().unbind()))
     }
 
     fn is_open(&mut self) -> bool {
@@ -469,7 +469,7 @@ impl Endpoint {
         Ok(())
     }
 
-    fn add_circuit(&mut self, circuit_id: u32, py_circuit: PyObject) -> PyResult<()> {
+    fn add_circuit(&mut self, circuit_id: u32, py_circuit: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
         let mut circuit = Circuit::new(circuit_id);
         set_circuit_keys(&mut circuit, &py_circuit)?;
@@ -477,7 +477,7 @@ impl Endpoint {
         Ok(())
     }
 
-    fn update_circuit(&mut self, circuit_id: u32, py_circuit: PyObject) -> PyResult<()> {
+    fn update_circuit(&mut self, circuit_id: u32, py_circuit: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
         if let Some(circuit) = rt.circuits.lock().unwrap().get_mut(&circuit_id) {
             set_circuit_keys(circuit, &py_circuit)?;
@@ -486,7 +486,7 @@ impl Endpoint {
         Ok(())
     }
 
-    fn update_circuit_stats(&mut self, circuit_id: u32, py_circuit: PyObject) -> PyResult<()> {
+    fn update_circuit_stats(&mut self, circuit_id: u32, py_circuit: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
         if let Some(circuit) = rt.circuits.lock().unwrap().get_mut(&circuit_id) {
             set_stats(circuit.bytes_up, circuit.bytes_down, circuit.last_activity, &py_circuit)?;
@@ -500,9 +500,9 @@ impl Endpoint {
         Ok(())
     }
 
-    fn add_relay(&mut self, circuit_id: u32, py_relay: PyObject) -> PyResult<()> {
+    fn add_relay(&mut self, circuit_id: u32, py_relay: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let mut relay = RelayRoute::new(py_relay.getattr(py, "circuit_id")?.extract::<u32>(py)?);
             relay.direction = match py_relay.getattr(py, "direction")?.extract(py)? {
                 0 => Direction::Forward,
@@ -518,7 +518,7 @@ impl Endpoint {
         })
     }
 
-    fn update_relay_stats(&mut self, circuit_id: u32, py_relay: PyObject) -> PyResult<()> {
+    fn update_relay_stats(&mut self, circuit_id: u32, py_relay: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
         if let Some(relay) = rt.relays.lock().unwrap().get_mut(&circuit_id) {
             set_stats(relay.bytes_up, relay.bytes_down, relay.last_activity, &py_relay)?;
@@ -532,11 +532,11 @@ impl Endpoint {
         Ok(())
     }
 
-    fn add_exit(&mut self, circuit_id: u32, py_exit: PyObject) -> PyResult<()> {
+    fn add_exit(&mut self, circuit_id: u32, py_exit: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
         let mut exit = ExitSocket::new(circuit_id);
 
-        Python::with_gil(|py| {
+        Python::attach(|py| {
             let binding = py_exit.getattr(py, "hop")?;
             let hop = binding.bind(py);
             exit.peer = addr_from_hop(&hop)?;
@@ -546,11 +546,11 @@ impl Endpoint {
         })
     }
 
-    fn update_exit_stats(&mut self, circuit_id: u32, py_exit: PyObject) -> PyResult<()> {
+    fn update_exit_stats(&mut self, circuit_id: u32, py_exit: Py<PyAny>) -> PyResult<()> {
         let rt = self.get_routing_table()?;
         if let Some(exit) = rt.exits.lock().unwrap().get_mut(&circuit_id) {
             set_stats(exit.bytes_up, exit.bytes_down, exit.last_activity, &py_exit)?;
-            return Python::with_gil(|py| {
+            return Python::attach(|py| {
                 py_exit.setattr(py, "enabled", exit.socket.is_some())?;
                 Ok(())
             });
@@ -626,11 +626,11 @@ pub fn _rust(py: Python, m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 
-fn set_circuit_keys(circuit: &mut Circuit, py_circuit: &PyObject) -> PyResult<()> {
+fn set_circuit_keys(circuit: &mut Circuit, py_circuit: &Py<PyAny>) -> PyResult<()> {
     circuit.keys.clear();
     circuit.exit_flags.clear();
 
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         let hops = py_circuit.getattr(py, "_hops")?;
         let hops_list = hops.downcast_bound::<PyList>(py)?;
         for hop in hops_list {
@@ -696,9 +696,9 @@ fn set_stats(
     bytes_up: u32,
     bytes_down: u32,
     last_activity: u64,
-    py_tunnel_obj: &PyObject,
+    py_tunnel_obj: &Py<PyAny>,
 ) -> PyResult<()> {
-    Python::with_gil(|py| {
+    Python::attach(|py| {
         py_tunnel_obj.setattr(py, "bytes_down", bytes_down)?;
         py_tunnel_obj.setattr(py, "bytes_up", bytes_up)?;
 
