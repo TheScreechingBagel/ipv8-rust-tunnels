@@ -167,7 +167,7 @@ pub fn crypto_auth_verify(tag: &[u8], key: &[u8], message: &[u8]) -> bool {
     false
 }
 
-#[pyclass]
+#[pyclass(from_py_object)]
 #[derive(Clone)]
 pub struct SessionKeys {
     #[pyo3(get, set)]
