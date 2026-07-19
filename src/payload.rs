@@ -92,14 +92,10 @@ impl Raw {
         reader: &mut deku::reader::Reader<R>,
     ) -> Result<Vec<u8>, DekuError> {
         let Ok(begin_pos) = reader.stream_position() else {
-            return Err(DekuError::Parse(std::borrow::Cow::from(format!(
-                "failed getting stream position"
-            ))));
+            return Err(DekuError::Parse(std::borrow::Cow::from("failed getting stream position")));
         };
         let Ok(end_pos) = reader.seek(deku::no_std_io::SeekFrom::End(0)) else {
-            return Err(DekuError::Parse(std::borrow::Cow::from(format!(
-                "failed getting stream length"
-            ))));
+            return Err(DekuError::Parse(std::borrow::Cow::from("failed getting stream length")));
         };
         let len = (end_pos - begin_pos) as usize;
         let mut buf = vec![0; len];
